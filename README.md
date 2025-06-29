@@ -1,60 +1,81 @@
 # User-Level Threads Library (uthreads)
 
-A user-level threading library implemented in C++ for educational and systems programming purposes. This project was developed as part of the Hebrew University OS course.
+A C++ user-level threading library supporting both preemptive and cooperative multithreading, with quantum-based scheduling and a clear API for thread management in user space.
+
+Easily create, schedule, and manage multiple user-level threads in your application, with robust context switching and safe signal handling.
+
+## Technical Highlights
+- Implements user-level context switching using `setjmp`/`longjmp` and manual stack manipulation
+- Uses Linux signals and virtual timers (`setitimer`, `SIGVTALRM`) for preemptive scheduling
+- Thread management and scheduling logic is decoupled from application logic
+- Emphasis on reliability, maintainability, and clear error handling
 
 ## Features
-- Cooperative user-level threads (uthreads) with context switching
+- User-level threads (uthreads) with context switching
 - Thread creation, termination, blocking, resuming, and sleeping
-- Quantum-based scheduling using virtual timer interrupts
-- Thread-safe API (signal blocking)
-- Simple and clear C++ design with modern best practices
+- Quantum-based round-robin scheduling
+- Signal-safe API using `sigprocmask` for thread safety
+
+## Example Usage
+```cpp
+#include "uthreads.h"
+#include <iostream>
+
+void thread_func() {
+    std::cout << "Hello from thread " << uthread_get_tid() << std::endl;
+    uthread_terminate(uthread_get_tid());
+}
+
+int main() {
+    uthread_init(1000);
+    int tid = uthread_spawn(thread_func);
+    std::cout << "Main thread, spawned thread id: " << tid << std::endl;
+    while (true) {} // Let threads run
+}
+```
 
 ## Project Structure
 - `uthreads.h` / `uthreads.cpp` — Main API and implementation
 - `Thread.h` / `Thread.cpp` — Thread class and context management
-- `test0_sanity.cpp` — Sanity test: spawns and terminates threads, prints quantum counts
-- `test2_two_thread.cpp` — Two-thread test: checks context switching between main and spawned thread
+- `examples/` — Usage examples and tests
+- `tests/` — Expected outputs for validation
 
-## How to Build
+## Quick Start
 ```sh
 cd src
-make                # builds the library (libuthreads.a)
-g++ -std=c++11 -Wall -Wextra -g -o test0_sanity test0_sanity.cpp uthreads.cpp Thread.cpp
+make
+g++ -std=c++11 -Wall -Wextra -g -o test0_sanity ../examples/test0_sanity.cpp uthreads.cpp Thread.cpp
 ./test0_sanity
-
-g++ -std=c++11 -Wall -Wextra -g -o test2_two_thread test2_two_thread.cpp uthreads.cpp Thread.cpp
-./test2_two_thread
 ```
 
+## Design Notes
+- Context switching is implemented with setjmp/longjmp for portability and control.
+- Preemptive scheduling is achieved using Linux virtual timers and signals.
+- All thread management is signal-safe to prevent race conditions and ensure robustness.
+
 ## Example Output
-### test0_sanity
+<details>
+<summary>test0_sanity</summary>
+
 ```
 Thread:m Number:(0) 0
 Init Quantum num is: 1
 m0 Quanta:1
-m0 Quanta:2
-m0 Quanta:3
-m spawns f at (1) 1
-m spawns g at (2) 2
-f1 Quanta:1
 ...
 ```
-### test2_two_thread
+</details>
+
+<details>
+<summary>test2_two_thread</summary>
+
 ```
 test2:
 --------------
 ***0***
 ***1***
-***0***
-***1***
 ...
 ```
-
-## Why This Project?
-- Demonstrates low-level systems programming and context switching
-- Clean, modern, and well-documented C++ code
-- Includes working tests and example outputs
-- Great for learning, interviews, and as a professional portfolio piece
+</details>
 
 ---
-Feel free to open issues or contribute!
+For questions or feedback, feel free to open an issue or contact me via GitHub.
