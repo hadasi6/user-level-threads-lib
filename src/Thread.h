@@ -7,7 +7,7 @@
 #include <setjmp.h>
 #include <signal.h>
 
-#define STACK_SIZE 100000
+#define STACK_SIZE 4096
 
 #ifdef __x86_64__
 typedef unsigned long address_t;
@@ -19,9 +19,15 @@ typedef unsigned int address_t;
 #define JB_PC 5
 #endif
 
-#define RUNNING 0
-#define READY 1
-#define BLOCKED 2
+// Thread state enum for clarity and type safety
+/**
+ * @brief Enum representing the possible states of a thread.
+ */
+enum class ThreadState {
+    RUNNING = 0,
+    READY = 1,
+    BLOCKED = 2
+};
 
 typedef void (*thread_entry_point)(void);
 
@@ -30,7 +36,7 @@ address_t translate_address(address_t addr);  // Declared elsewhere
 class Thread {
 public:
     int tid;
-    int state;
+    ThreadState state;
     sigjmp_buf env;
     char stack[STACK_SIZE];
     int total_quantums;
@@ -48,12 +54,12 @@ public:
     // Getters
     int get_quantums() const;
     int get_sleep_time() const;
-    int get_state() const;
+    ThreadState get_state() const;
 
     // Setters
     void set_quantums(int q);
     void set_sleep_time(int t);
-    void set_state(int s);
+    void set_state(ThreadState s);
 };
 
 #endif // THREAD_H
