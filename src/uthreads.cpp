@@ -1,3 +1,9 @@
+// ==========================================================
+// uthreads.cpp - User-level threading library implementation
+// Author: <Your Name>
+// Date: 2025-07-02
+// ==========================================================
+
 #include <stdio.h>
 #include <setjmp.h>
 #include <signal.h>
@@ -48,21 +54,26 @@ address_t translate_address(address_t addr)
 #define SYSTEM_ERROR(msg) \
     fprintf(stderr, "system error: %s\n", msg)
 
+// ================== Global Variables =====================
 static int total_quantums = 0;
 static struct itimerval timer = {0};
-Thread* current_thread;
-int quantum_duration;
-Thread* should_terminate;
-bool end_process;
-int exit_status;
+Thread* current_thread = nullptr;
+int quantum_duration = 0;
+Thread* should_terminate = nullptr;
+bool end_process = false;
+int exit_status = 0;
 std::queue<Thread*> ready_queue;
 std::set<Thread*> sleeping_threads;
 std::priority_queue<int> available_ids;
 std::map<int, Thread*> all_threads;
 sigset_t blocked_sets;
-#define BLOCK_TIMER_SIGNAL sigprocmask(SIG_BLOCK, &blocked_sets,NULL)
-#define UNBLOCK_TIMER_SIGNAL sigprocmask(SIG_UNBLOCK, &blocked_sets,NULL)
+#define BLOCK_TIMER_SIGNAL sigprocmask(SIG_BLOCK, &blocked_sets, nullptr)
+#define UNBLOCK_TIMER_SIGNAL sigprocmask(SIG_UNBLOCK, &blocked_sets, nullptr)
 
+/**
+ * Clean up all threads and exit the process.
+ * @param exit_code Exit status code.
+ */
 void clean_and_exit(int exit_code = 0) {
     for (auto& pair : all_threads) {
         if (pair.first != 0) {
@@ -78,18 +89,25 @@ void clean_and_exit(int exit_code = 0) {
     exit(exit_code);
 }
 
+/**
+ * Reset the virtual timer for thread quantums.
+ * @param usecs Quantum duration in microseconds.
+ */
 void reset_timer(int usecs) {
     timer.it_value.tv_sec = 0;
     timer.it_value.tv_usec = usecs;
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_usec = usecs;
-    if (setitimer(ITIMER_VIRTUAL, &timer, NULL) == -1) {
+    if (setitimer(ITIMER_VIRTUAL, &timer, nullptr) == -1) {
         SYSTEM_ERROR("setitimer failed");
         exit_status = 1;
         uthread_terminate(0);
     }
 }
 
+/**
+ * Update all sleeping threads, waking those whose sleep time is over.
+ */
 void update_sleeping_threads() {
     std::vector<Thread*> to_wake;
     for (auto* thread : sleeping_threads) {
@@ -106,6 +124,9 @@ void update_sleeping_threads() {
     }
 }
 
+/**
+ * Finalize and clean up a thread marked for termination.
+ */
 void finalize_terminated_thread() {
     int tid = should_terminate->tid;
     delete should_terminate;
@@ -115,14 +136,36 @@ void finalize_terminated_thread() {
     reset_timer(quantum_duration);
 }
 
-void switch_thread() {
-    BLOCK_TIMER_SIGNAL;
-    update_sleeping_threads();
-    //check if was sent to sleep
+static void enqueue_current_if_needed() {
     if (!should_terminate && current_thread->sleep_time <= 0) {
         current_thread->set_state(ThreadState::READY);
         ready_queue.push(current_thread);
     }
+}
+
+static void handle_end_process() {
+    if (end_process && current_thread->tid == 0) {
+        while (!ready_queue.empty()) ready_queue.pop();
+        sleeping_threads.clear();
+        while (!available_ids.empty()) available_ids.pop();
+        clean_and_exit(0);
+    }
+}
+
+static void handle_should_terminate() {
+    if (should_terminate) {
+        finalize_terminated_thread();
+    }
+}
+
+/**
+ * Switch context to the next ready thread.
+ * Handles sleeping, termination, and process end.
+ */
+void switch_thread() {
+    BLOCK_TIMER_SIGNAL;
+    update_sleeping_threads();
+    enqueue_current_if_needed();  
     if (ready_queue.empty()) {
         UNBLOCK_TIMER_SIGNAL;
         return;
@@ -140,15 +183,8 @@ void switch_thread() {
             siglongjmp(current_thread->env, 1);
         }
         else {
-            if (end_process && current_thread->tid == 0) {
-                while (!ready_queue.empty()) ready_queue.pop();
-                sleeping_threads.clear();
-                while (!available_ids.empty()) available_ids.pop();
-                clean_and_exit(0);
-            }
-            if (should_terminate) {
-                finalize_terminated_thread();
-            }
+            handle_end_process();
+            handle_should_terminate();
         }
     }
     else {
@@ -243,6 +279,20 @@ int uthread_spawn(thread_entry_point entry_point) {
     return id;
 }
 
+/**
+ * Remove a thread from the ready queue by its tid.
+ * @param tid Thread ID to remove.
+ */
+static void remove_thread_from_ready_queue(const int tid) {
+    std::queue<Thread*> temp;
+    while (!ready_queue.empty()) {
+        Thread* curr = ready_queue.front();
+        ready_queue.pop();
+        if (curr->tid != tid) temp.push(curr);
+    }
+    ready_queue = temp;
+}
+
 int uthread_terminate(int tid) {
     BLOCK_TIMER_SIGNAL;
     if (all_threads.find(tid) == all_threads.end()) {
@@ -272,14 +322,7 @@ int uthread_terminate(int tid) {
     available_ids.push(-tid);
     delete to_delete;
 
-    std::queue<Thread*> temp;
-    while (!ready_queue.empty()) {
-        Thread* curr = ready_queue.front();
-        ready_queue.pop();
-        if (curr->tid != tid) temp.push(curr);
-    }
-    ready_queue = temp;
-
+    remove_thread_from_ready_queue(tid);
     UNBLOCK_TIMER_SIGNAL;
     return SUCCESS;
 }
