@@ -1,6 +1,4 @@
-//
-// Created by hadas6 on 4/24/25.
-//
+
 #ifndef THREAD_H
 #define THREAD_H
 
