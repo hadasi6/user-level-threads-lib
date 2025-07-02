@@ -208,12 +208,7 @@ void free_memory(){
     while (!available_ids.empty()) available_ids.pop();
 }
 
-int uthread_init(int quantum_usecs) {
-    BLOCK_TIMER_SIGNAL;
-    end_process = false;
-    should_terminate= nullptr;
-    exit_status = 0;
-
+static void init_signal_mask() {
     if (sigemptyset(&blocked_sets) == -1) {
         SYSTEM_ERROR("sigemptyset failed");
         exit_status = 1;
@@ -224,31 +219,52 @@ int uthread_init(int quantum_usecs) {
         exit_status = 1;
         clean_and_exit(exit_status);
     }
-    if (quantum_usecs <= 0) {
-        THREAD_LIBRARY_ERROR("Invalid quantum value");
-        return FAILURE;
-    }
+}
 
-    total_quantums = 1;
-    quantum_duration = quantum_usecs;
-    for (int i = 1; i < MAX_THREAD_NUM; i++) available_ids.push(-i);
-    try{
+static void init_available_ids() {
+    for (int i = 1; i < MAX_THREAD_NUM; i++) {
+        available_ids.push(-i);
+    }
+}
+
+static void init_main_thread() {
+    try {
         current_thread = new Thread();
-    }catch (const std::bad_alloc& e) {
+    } catch (const std::bad_alloc& e) {
         SYSTEM_ERROR("Thread creation failed");
         UNBLOCK_TIMER_SIGNAL;
         exit_status = 1;
         clean_and_exit(exit_status);
     }
     all_threads[0] = current_thread;
+}
 
+static void setup_timer_handler() {
     struct sigaction sa = {0};
     sa.sa_handler = &timer_handler;
     if (sigaction(SIGVTALRM, &sa, nullptr) == -1) {
         SYSTEM_ERROR("sigaction failed");
         exit_status = 1;
         clean_and_exit(exit_status);
+    }
 }
+
+int uthread_init(int quantum_usecs) {
+    BLOCK_TIMER_SIGNAL;
+    end_process = false;
+    should_terminate = nullptr;
+    exit_status = 0;
+
+    init_signal_mask();
+    if (quantum_usecs <= 0) {
+        THREAD_LIBRARY_ERROR("Invalid quantum value");
+        return FAILURE;
+    }
+    total_quantums = 1;
+    quantum_duration = quantum_usecs;
+    init_available_ids();
+    init_main_thread();
+    setup_timer_handler();
     reset_timer(quantum_duration);
     UNBLOCK_TIMER_SIGNAL;
     return SUCCESS;
