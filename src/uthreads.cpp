@@ -1,9 +1,3 @@
-// ==========================================================
-// uthreads.cpp - User-level threading library implementation
-// Author: <Your Name>
-// Date: 2025-07-02
-// ==========================================================
-
 #include <stdio.h>
 #include <setjmp.h>
 #include <signal.h>
